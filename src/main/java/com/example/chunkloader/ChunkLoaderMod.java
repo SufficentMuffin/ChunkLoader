@@ -1,8 +1,7 @@
 package com.example.chunkloader;
 
-import com.example.chunkloader.registry.ModBlockEntities;
-import com.example.chunkloader.registry.ModBlocks;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,8 +11,9 @@ public class ChunkLoaderMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        ModBlocks.init();
-        ModBlockEntities.init();
-        LOGGER.info("Chunk Loader mod initialized");
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            ChunkLoaderCommands.register(dispatcher);
+        });
+        LOGGER.info("Chunk Loader server-only command/mod initialized");
     }
 }

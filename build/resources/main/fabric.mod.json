@@ -9,7 +9,7 @@
   ],
   "contact": {},
   "license": "CC0-1.0",
-  "environment": "*",
+  "environment": "server",
   "entrypoints": {
     "main": [
       "com.example.chunkloader.ChunkLoaderMod"
@@ -19,7 +19,8 @@
   "accessWidener": "chunkloader.accesswidener",
   "depends": {
     "fabricloader": ">=0.18.0",
-    "minecraft": "~1.21.11",
-    "java": ">=21"
+    "minecraft": ">=1.21.10",
+    "java": ">=21",
+    "fabric": "*"
   }
 }
