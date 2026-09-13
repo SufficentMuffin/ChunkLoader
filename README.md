@@ -1,4 +1,4 @@
-# Simple Chunk Loader (Fabric, MC 1.21.11)
+# Chunk Loader (Fabric, MC 1.21.11)
 
 A Fabric mod for Minecraft 1.21.11 that adds a block-based chunk loader item
 which force-loads a configurable radius of chunks and manually simulates
