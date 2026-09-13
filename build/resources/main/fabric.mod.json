@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "chunkloader",
+  "version": "1.0.0",
+  "name": "Simple Chunk Loader",
+  "description": "Adds a Chunk Loader block/item (no crafting recipe) that force-loads chunks in a configurable radius and manually simulates random ticks, so crops, cactus, sugar cane, etc. keep growing without a player nearby.",
+  "authors": [
+    "you"
+  ],
+  "contact": {},
+  "license": "CC0-1.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.example.chunkloader.ChunkLoaderMod"
+    ]
+  },
+  "mixins": [],
+  "accessWidener": "chunkloader.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": "~1.21.11",
+    "java": ">=21"
+  }
+}
