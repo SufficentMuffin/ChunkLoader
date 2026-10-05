@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "chunkloader",
+	"version": "${version}",
+	"name": "Chunk Loader",
+	"description": "Vanilla-client-compatible chunk loaders built from dragon eggs (Mixin-based, no Fabric API). Place a dragon egg to forceload and actively grow crops around it. Player-placed eggs are mineable; op-claimed loaders are permanent. Toggle per-loader with /chunkloader mineable.",
+	"authors": ["SufficientMuffin"],
+	"contact": {},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.SufficientMuffin.chunkloader.ChunkLoaderMod"
+		]
+	},
+	"mixins": [
+		"chunkloader.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.10",
+		"java": ">=21"
+	}
+}
