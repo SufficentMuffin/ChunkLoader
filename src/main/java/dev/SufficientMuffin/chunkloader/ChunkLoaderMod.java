@@ -9,8 +9,9 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.permissions.Permissions;
 
 /**
  * Entry point. No Fabric API is used — all behaviour is wired through Mixins
@@ -40,47 +41,46 @@ public class ChunkLoaderMod implements ModInitializer {
 	}
 
 	/** Called from {@code CommandManagerMixin} after the dispatcher is built. */
-	public static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher) {
-		LiteralArgumentBuilder<ServerCommandSource> claim = CommandManager.literal("claim")
-				.requires(src -> src.hasPermissionLevel(2))
-				.executes(ctx -> MANAGER.claimAt(ctx.getSource().getPlayerOrThrow()))
+	public static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+		LiteralArgumentBuilder<CommandSourceStack> claim = Commands.literal("claim")
+				.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+				.executes(ctx -> MANAGER.claimAt(ctx.getSource().getPlayerOrException()))
 				.then(claimInMode(LoaderEntry.Mode.CROP))
 				.then(claimInMode(LoaderEntry.Mode.ENTITY));
 
-		LiteralArgumentBuilder<ServerCommandSource> mode = CommandManager.literal("mode")
-				.requires(src -> src.hasPermissionLevel(0));
+		LiteralArgumentBuilder<CommandSourceStack> mode = Commands.literal("mode");
 		for (LoaderEntry.Mode m : LoaderEntry.Mode.values()) {
-			mode = mode.then(CommandManager.literal(m.id)
-					.executes(ctx -> MANAGER.setMode(ctx.getSource().getPlayerOrThrow(), m)));
+			mode = mode.then(Commands.literal(m.id)
+					.executes(ctx -> MANAGER.setMode(ctx.getSource().getPlayerOrException(), m)));
 		}
 
-		dispatcher.register(CommandManager.literal("chunkloader")
+		dispatcher.register(Commands.literal("chunkloader")
 				.then(claim)
 				.then(mode)
-				.then(CommandManager.literal("unclaim")
-						.requires(src -> src.hasPermissionLevel(2))
-						.executes(ctx -> MANAGER.unclaimAt(ctx.getSource().getPlayerOrThrow())))
-				.then(CommandManager.literal("radius")
-						.requires(src -> src.hasPermissionLevel(2))
-						.then(CommandManager.argument("radius", IntegerArgumentType.integer(0, LoaderManager.MAX_RADIUS))
+				.then(Commands.literal("unclaim")
+						.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+						.executes(ctx -> MANAGER.unclaimAt(ctx.getSource().getPlayerOrException())))
+				.then(Commands.literal("radius")
+						.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+						.then(Commands.argument("radius", IntegerArgumentType.integer(0, LoaderManager.MAX_RADIUS))
 								.executes(ctx -> MANAGER.setRadius(
-										ctx.getSource().getPlayerOrThrow(),
+										ctx.getSource().getPlayerOrException(),
 										IntegerArgumentType.getInteger(ctx, "radius")))))
-				.then(CommandManager.literal("mineable")
-						.requires(src -> src.hasPermissionLevel(2))
-						.then(CommandManager.argument("mineable", BoolArgumentType.bool())
+				.then(Commands.literal("mineable")
+						.requires(src -> src.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+						.then(Commands.argument("mineable", BoolArgumentType.bool())
 								.executes(ctx -> MANAGER.setMineable(
-										ctx.getSource().getPlayerOrThrow(),
+										ctx.getSource().getPlayerOrException(),
 										BoolArgumentType.getBool(ctx, "mineable"))))));
 	}
 
 	/** {@code claim <mode>} uses the mode's default radius; {@code claim <mode> <radius>} overrides it. */
-	private static LiteralArgumentBuilder<ServerCommandSource> claimInMode(LoaderEntry.Mode mode) {
-		return CommandManager.literal(mode.id)
-				.executes(ctx -> MANAGER.claimAt(ctx.getSource().getPlayerOrThrow(), mode))
-				.then(CommandManager.argument("radius", IntegerArgumentType.integer(0, LoaderManager.MAX_RADIUS))
+	private static LiteralArgumentBuilder<CommandSourceStack> claimInMode(LoaderEntry.Mode mode) {
+		return Commands.literal(mode.id)
+				.executes(ctx -> MANAGER.claimAt(ctx.getSource().getPlayerOrException(), mode))
+				.then(Commands.argument("radius", IntegerArgumentType.integer(0, LoaderManager.MAX_RADIUS))
 						.executes(ctx -> MANAGER.claimAt(
-								ctx.getSource().getPlayerOrThrow(), mode,
+								ctx.getSource().getPlayerOrException(), mode,
 								IntegerArgumentType.getInteger(ctx, "radius"))));
 	}
 }

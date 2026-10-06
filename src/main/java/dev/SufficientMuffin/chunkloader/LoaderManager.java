@@ -13,20 +13,22 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.WorldSavePath;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permissions;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.core.particles.ParticleTypes;
 
 /**
  * Tracks dragon-egg chunk loaders, drives forceloading + growth simulation,
@@ -52,7 +54,7 @@ import net.minecraft.world.World;
  */
 public final class LoaderManager {
 
-	static final Text CHUNK_LOADER_NAME = Text.literal("Chunk Loader");
+	static final Component CHUNK_LOADER_NAME = Component.literal("Chunk Loader");
 
 	static final int MAX_RADIUS = 8;
 	private static final int TICKS_PER_SECOND = 20;
@@ -69,11 +71,11 @@ public final class LoaderManager {
 	/** The world currently running its spawn cycle, set by {@code ServerWorldMixin}
 	 *  around {@code tickSpawners}. Read by {@code SpawnHelperMixin} to attribute
 	 *  chunk-budget bonuses to the correct dimension. Null outside a spawn cycle. */
-	private ServerWorld currentSpawnDimension = null;
+	private ServerLevel currentSpawnDimension = null;
 
 	/** Called from {@code ServerWorldMixin} — sets the dimension {@code setupSpawn}
 	 *  is about to run for, or null to clear it after the cycle. */
-	public void setCurrentSpawnDimension(ServerWorld world) {
+	public void setCurrentSpawnDimension(ServerLevel world) {
 		this.currentSpawnDimension = world;
 	}
 
@@ -103,13 +105,13 @@ public final class LoaderManager {
 			return;
 		}
 		for (Map.Entry<String, Map<BlockPos, LoaderEntry>> dimEntry : loaders.entrySet()) {
-			ServerWorld world = resolveWorld(dimEntry.getKey());
+			ServerLevel world = resolveWorld(dimEntry.getKey());
 			if (world == null) {
 				continue;
 			}
 			List<LoaderEntry> toUnclaim = new ArrayList<>();
 			for (LoaderEntry entry : dimEntry.getValue().values()) {
-				if (!world.getBlockState(entry.pos).isOf(Blocks.DRAGON_EGG)) {
+				if (!world.getBlockState(entry.pos).is(Blocks.DRAGON_EGG)) {
 					// Egg is gone (mined, exploded, pushed, …) -> release.
 					toUnclaim.add(entry);
 					continue;
@@ -126,10 +128,10 @@ public final class LoaderManager {
 	/** Chunks already being random-ticked by vanilla (near online players) — we must not double-tick them. */
 	private Set<Long> collectAlreadyTickingChunks() {
 		Set<Long> set = new HashSet<>();
-		int simDist = server.getPlayerManager().getSimulationDistance();
-		for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-			int cx = p.getBlockPos().getX() >> 4;
-			int cz = p.getBlockPos().getZ() >> 4;
+		int simDist = server.getPlayerList().getSimulationDistance();
+		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+			int cx = p.blockPosition().getX() >> 4;
+			int cz = p.blockPosition().getZ() >> 4;
 			for (int dx = -simDist; dx <= simDist; dx++) {
 				for (int dz = -simDist; dz <= simDist; dz++) {
 					set.add(pack(cx + dx, cz + dz));
@@ -148,12 +150,12 @@ public final class LoaderManager {
 		}
 		Set<Long> alreadyTicking = cachedTickingChunks;
 		for (Map.Entry<String, Map<BlockPos, LoaderEntry>> dimEntry : loaders.entrySet()) {
-			ServerWorld world = resolveWorld(dimEntry.getKey());
+			ServerLevel world = resolveWorld(dimEntry.getKey());
 			if (world == null) {
 				continue;
 			}
 			for (LoaderEntry entry : dimEntry.getValue().values()) {
-				if (!world.getBlockState(entry.pos).isOf(Blocks.DRAGON_EGG)) {
+				if (!world.getBlockState(entry.pos).is(Blocks.DRAGON_EGG)) {
 					continue; // absence is handled by the per-second verification
 				}
 				simulateColumnTicks(world, entry, alreadyTicking);
@@ -161,16 +163,16 @@ public final class LoaderManager {
 		}
 	}
 
-	private int simulateColumnTicks(ServerWorld world, LoaderEntry entry, Set<Long> alreadyTicking) {
+	private int simulateColumnTicks(ServerLevel world, LoaderEntry entry, Set<Long> alreadyTicking) {
 		int cx = entry.pos.getX() >> 4;
 		int cz = entry.pos.getZ() >> 4;
 		int height = world.getHeight();
-		int bottomY = world.getBottomY();
+		int bottomY = world.getMinY();
 		int subChunks = Math.max(1, height / 16);
 		// Vanilla performs 3 random ticks per sub-chunk per game tick — the exact
 		// density we reproduce, so growth is authentic and never exceeds vanilla.
 		int perColumnPerTick = 3 * subChunks;
-		Random random = world.getRandom();
+		RandomSource random = world.getRandom();
 		int count = 0;
 		for (int dx = -entry.radius; dx <= entry.radius; dx++) {
 			for (int dz = -entry.radius; dz <= entry.radius; dz++) {
@@ -191,8 +193,8 @@ public final class LoaderManager {
 		return count;
 	}
 
-	private void spawnAmbientParticles(ServerWorld world, LoaderEntry entry) {
-		world.spawnParticles(ParticleTypes.COMPOSTER,
+	private void spawnAmbientParticles(ServerLevel world, LoaderEntry entry) {
+		world.sendParticles(ParticleTypes.COMPOSTER,
 				entry.pos.getX() + 0.5, entry.pos.getY() + 1.0, entry.pos.getZ() + 0.5,
 				8, 0.375, 0.4375, 0.3125, 0.004);
 	}
@@ -200,18 +202,18 @@ public final class LoaderManager {
 	// ------------------------------------------------------------------ claim / unclaim
 
 	/** Called from {@code UseBlockCallback} when a dragon egg is about to be placed (crop mode, mineable). */
-	public void onPlace(ServerWorld world, BlockPos pos) {
+	public void onPlace(ServerLevel world, BlockPos pos) {
 		onPlace(world, pos, LoaderEntry.Mode.CROP);
 	}
 
 	/** Same, for a loader claimed in an explicit mode (mineable — player-placed). */
-	public void onPlace(ServerWorld world, BlockPos pos, LoaderEntry.Mode mode) {
-		String dim = world.getRegistryKey().getValue().toString();
-		BlockPos imm = pos.toImmutable();
+	public void onPlace(ServerLevel world, BlockPos pos, LoaderEntry.Mode mode) {
+		String dim = world.dimension().identifier().toString();
+		BlockPos imm = pos.immutable();
 		LoaderEntry entry = new LoaderEntry(dim, imm, mode.defaultRadius, mode, true);
 		loaders.computeIfAbsent(dim, k -> new LinkedHashMap<>()).put(imm, entry);
 		setForced(world, entry, true);
-		world.spawnParticles(ParticleTypes.COMPOSTER,
+		world.sendParticles(ParticleTypes.COMPOSTER,
 				imm.getX() + 0.5, imm.getY() + 1.0625, imm.getZ() + 0.5625,
 				24, 0.46875, 0.53125, 0.40625, 0.012);
 		save();
@@ -219,25 +221,25 @@ public final class LoaderManager {
 	}
 
 	/** {@code /chunkloader claim} — claims the player's current position as a crop loader and places a dragon egg there. */
-	public int claimAt(ServerPlayerEntity player) {
+	public int claimAt(ServerPlayer player) {
 		return claimAt(player, LoaderEntry.Mode.CROP);
 	}
 
 	/** {@code /chunkloader claim <crop|entity>} — claims in that mode, using the mode's default radius. */
-	public int claimAt(ServerPlayerEntity player, LoaderEntry.Mode mode) {
+	public int claimAt(ServerPlayer player, LoaderEntry.Mode mode) {
 		return claimAt(player, mode, mode.defaultRadius);
 	}
 
 	/** {@code /chunkloader claim <crop|entity> <radius>} — claims in that mode with an explicit radius. */
-	public int claimAt(ServerPlayerEntity player, LoaderEntry.Mode mode, int radius) {
+	public int claimAt(ServerPlayer player, LoaderEntry.Mode mode, int radius) {
 		radius = clampRadius(radius);
-		ServerWorld world = (ServerWorld) player.getEntityWorld();
-		BlockPos playerPos = player.getBlockPos();
+		ServerLevel world = (ServerLevel) player.level();
+		BlockPos playerPos = player.blockPosition();
 		// Place the egg at the player's feet; if that slot is occupied, place it one block above.
-		BlockPos eggPos = world.getBlockState(playerPos).isReplaceable() ? playerPos : playerPos.up();
-		world.setBlockState(eggPos, Blocks.DRAGON_EGG.getDefaultState());
+		BlockPos eggPos = world.getBlockState(playerPos).canBeReplaced() ? playerPos : playerPos.above();
+		world.setBlockAndUpdate(eggPos, Blocks.DRAGON_EGG.defaultBlockState());
 		onPlace(world, eggPos, mode);
-		LoaderEntry entry = loaders.get(world.getRegistryKey().getValue().toString()).get(eggPos.toImmutable());
+		LoaderEntry entry = loaders.get(world.dimension().identifier().toString()).get(eggPos.immutable());
 		if (entry != null) {
 			entry.mineable = false;  // op-claimed loaders are permanent (unmineable)
 			if (entry.radius != radius) {
@@ -247,35 +249,35 @@ public final class LoaderManager {
 			}
 			save();
 		}
-		player.sendMessage(Text.literal("Claimed " + mode.id + " chunk loader at "
+		player.sendSystemMessage(Component.literal("Claimed " + mode.id + " chunk loader at "
 				+ eggPos.getX() + ", " + eggPos.getY() + ", " + eggPos.getZ()
-				+ " (radius " + radius + ")."), false);
+				+ " (radius " + radius + ")."));
 		return 1;
 	}
 
 	/** {@code /chunkloader unclaim} — releases the loader whose radius contains the player and removes its egg. */
-	public int unclaimAt(ServerPlayerEntity player) {
+	public int unclaimAt(ServerPlayer player) {
 		LoaderEntry best = loaderNearPlayer(player);
 		if (best == null) {
-			player.sendMessage(Text.literal("You are not standing inside any chunk loader's radius."), false);
+			player.sendSystemMessage(Component.literal("You are not standing inside any chunk loader's radius."));
 			return 0;
 		}
-		ServerWorld world = resolveWorld(best.dimension);
+		ServerLevel world = resolveWorld(best.dimension);
 		if (world == null) {
-			player.sendMessage(Text.literal("That loader's dimension is not loaded."), false);
+			player.sendSystemMessage(Component.literal("That loader's dimension is not loaded."));
 			return 0;
 		}
 		// Remove the egg block if it's still there.
-		if (world.getBlockState(best.pos).isOf(Blocks.DRAGON_EGG)) {
-			world.setBlockState(best.pos, Blocks.AIR.getDefaultState());
+		if (world.getBlockState(best.pos).is(Blocks.DRAGON_EGG)) {
+			world.setBlockAndUpdate(best.pos, Blocks.AIR.defaultBlockState());
 		}
 		unclaim(world, best);
-		player.sendMessage(Text.literal("Released chunk loader at "
-				+ best.pos.getX() + ", " + best.pos.getY() + ", " + best.pos.getZ() + "."), false);
+		player.sendSystemMessage(Component.literal("Released chunk loader at "
+				+ best.pos.getX() + ", " + best.pos.getY() + ", " + best.pos.getZ() + "."));
 		return 1;
 	}
 
-	private void unclaim(ServerWorld world, LoaderEntry entry) {
+	private void unclaim(ServerLevel world, LoaderEntry entry) {
 		setForced(world, entry, false);
 		Map<BlockPos, LoaderEntry> byDim = loaders.get(entry.dimension);
 		if (byDim != null) {
@@ -288,17 +290,17 @@ public final class LoaderManager {
 		ChunkLoaderMod.LOGGER.info("[ChunkLoader] released {} at {}", entry.dimension, entry.pos);
 	}
 
-	boolean isTracked(ServerWorld world, BlockPos pos) {
-		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.getRegistryKey().getValue().toString());
-		return byDim != null && byDim.containsKey(pos.toImmutable());
+	boolean isTracked(ServerLevel world, BlockPos pos) {
+		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.dimension().identifier().toString());
+		return byDim != null && byDim.containsKey(pos.immutable());
 	}
 
 	/** The loader whose radius contains {@code pos} (nearest one wins where radii overlap), or {@code null}. */
-	private LoaderEntry loaderAt(World world, BlockPos pos) {
+	private LoaderEntry loaderAt(Level world, BlockPos pos) {
 		if (server == null) {
 			return null;
 		}
-		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.getRegistryKey().getValue().toString());
+		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.dimension().identifier().toString());
 		if (byDim == null) {
 			return null;
 		}
@@ -318,10 +320,10 @@ public final class LoaderManager {
 
 	/** The loader whose radius contains the player (nearest one wins where radii overlap), or {@code null}.
 	 *  Only searches the dimension the player is currently in. */
-	private LoaderEntry loaderNearPlayer(ServerPlayerEntity player) {
-		int cx = player.getBlockPos().getX() >> 4;
-		int cz = player.getBlockPos().getZ() >> 4;
-		Map<BlockPos, LoaderEntry> byDim = loaders.get(player.getEntityWorld().getRegistryKey().getValue().toString());
+	private LoaderEntry loaderNearPlayer(ServerPlayer player) {
+		int cx = player.blockPosition().getX() >> 4;
+		int cz = player.blockPosition().getZ() >> 4;
+		Map<BlockPos, LoaderEntry> byDim = loaders.get(player.level().dimension().identifier().toString());
 		if (byDim == null) {
 			return null;
 		}
@@ -338,7 +340,7 @@ public final class LoaderManager {
 	}
 
 	/** True if the position lies inside any loader's forceload radius (exempts spawners from the player-proximity check). */
-	public boolean isInsideAnyLoader(World world, BlockPos pos) {
+	public boolean isInsideAnyLoader(Level world, BlockPos pos) {
 		return loaderAt(world, pos) != null;
 	}
 
@@ -346,7 +348,7 @@ public final class LoaderManager {
 	 * True only inside an {@code entity}-mode loader's radius — the loaders that hold the mobs
 	 * living in them. A {@code crop}-mode loader answers false, so its mobs stay ordinary.
 	 */
-	public boolean isInsideEntityModeLoader(World world, BlockPos pos) {
+	public boolean isInsideEntityModeLoader(Level world, BlockPos pos) {
 		LoaderEntry e = loaderAt(world, pos);
 		return e != null && e.mode == LoaderEntry.Mode.ENTITY;
 	}
@@ -367,7 +369,7 @@ public final class LoaderManager {
 		if (currentSpawnDimension == null) {
 			return 0;
 		}
-		String dim = currentSpawnDimension.getRegistryKey().getValue().toString();
+		String dim = currentSpawnDimension.dimension().identifier().toString();
 		Map<BlockPos, LoaderEntry> byDim = loaders.get(dim);
 		if (byDim == null) {
 			return 0;
@@ -383,81 +385,81 @@ public final class LoaderManager {
 	}
 
 	/** {@code /chunkloader radius <n>} — the loader whose forceload radius contains the player. */
-	public int setRadius(ServerPlayerEntity player, int radius) {
+	public int setRadius(ServerPlayer player, int radius) {
 		radius = clampRadius(radius);
 		LoaderEntry best = loaderNearPlayer(player);
 		if (best == null) {
-			player.sendMessage(Text.literal("You are not standing inside any chunk loader's radius."), false);
+			player.sendSystemMessage(Component.literal("You are not standing inside any chunk loader's radius."));
 			return 0;
 		}
-		ServerWorld world = resolveWorld(best.dimension);
+		ServerLevel world = resolveWorld(best.dimension);
 		if (world == null) {
-			player.sendMessage(Text.literal("That loader's dimension is not loaded."), false);
+			player.sendSystemMessage(Component.literal("That loader's dimension is not loaded."));
 			return 0;
 		}
 		setForced(world, best, false);
 		best.radius = radius;
 		setForced(world, best, true);
 		save();
-		player.sendMessage(Text.literal("Updated chunk loader at "
+		player.sendSystemMessage(Component.literal("Updated chunk loader at "
 				+ best.pos.getX() + ", " + best.pos.getY() + ", " + best.pos.getZ()
-				+ " (" + best.dimension + ", " + best.mode.id + " mode) to radius " + radius + "."), false);
+				+ " (" + best.dimension + ", " + best.mode.id + " mode) to radius " + radius + "."));
 		return 1;
 	}
 
 	/** {@code /chunkloader mode <crop|entity>} — switches the loader whose radius contains the player.
 	 *  Available to all players, but permanent (non-mineable) loaders can only be changed by ops. */
-	public int setMode(ServerPlayerEntity player, LoaderEntry.Mode mode) {
+	public int setMode(ServerPlayer player, LoaderEntry.Mode mode) {
 		LoaderEntry best = loaderNearPlayer(player);
 		if (best == null) {
-			player.sendMessage(Text.literal("You are not standing inside any chunk loader's radius."), false);
+			player.sendSystemMessage(Component.literal("You are not standing inside any chunk loader's radius."));
 			return 0;
 		}
-		if (!best.mineable && !player.hasPermissionLevel(2)) {
-			player.sendMessage(Text.literal("That chunk loader is permanent — only operators can change its mode."), false);
+		if (!best.mineable && !player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) {
+			player.sendSystemMessage(Component.literal("That chunk loader is permanent — only operators can change its mode."));
 			return 0;
 		}
 		if (best.mode == mode) {
-			player.sendMessage(Text.literal("That chunk loader is already in " + mode.id + " mode."), false);
+			player.sendSystemMessage(Component.literal("That chunk loader is already in " + mode.id + " mode."));
 			return 1;
 		}
 		best.mode = mode;
 		save();
-		player.sendMessage(Text.literal("Chunk loader at "
+		player.sendSystemMessage(Component.literal("Chunk loader at "
 				+ best.pos.getX() + ", " + best.pos.getY() + ", " + best.pos.getZ()
-				+ " (" + best.dimension + ") is now in " + mode.id + " mode."), false);
+				+ " (" + best.dimension + ") is now in " + mode.id + " mode."));
 		return 1;
 	}
 
 	/** {@code /chunkloader mineable <true|false>} — toggles whether the loader's egg can be mined. */
-	public int setMineable(ServerPlayerEntity player, boolean mineable) {
+	public int setMineable(ServerPlayer player, boolean mineable) {
 		LoaderEntry best = loaderNearPlayer(player);
 		if (best == null) {
-			player.sendMessage(Text.literal("You are not standing inside any chunk loader's radius."), false);
+			player.sendSystemMessage(Component.literal("You are not standing inside any chunk loader's radius."));
 			return 0;
 		}
 		best.mineable = mineable;
 		save();
-		player.sendMessage(Text.literal("Chunk loader at "
+		player.sendSystemMessage(Component.literal("Chunk loader at "
 				+ best.pos.getX() + ", " + best.pos.getY() + ", " + best.pos.getZ()
-				+ " (" + best.dimension + ") is now " + (mineable ? "mineable" : "permanent") + "."), false);
+				+ " (" + best.dimension + ") is now " + (mineable ? "mineable" : "permanent") + "."));
 		return 1;
 	}
 
 	/** Returns the loader whose egg is at the given position, or {@code null} if not a loader egg. */
-	public LoaderEntry findLoaderAt(ServerWorld world, BlockPos pos) {
-		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.getRegistryKey().getValue().toString());
+	public LoaderEntry findLoaderAt(ServerLevel world, BlockPos pos) {
+		Map<BlockPos, LoaderEntry> byDim = loaders.get(world.dimension().identifier().toString());
 		if (byDim == null) {
 			return null;
 		}
-		return byDim.get(pos.toImmutable());
+		return byDim.get(pos.immutable());
 	}
 
 	private static int clampRadius(int radius) {
 		return Math.min(Math.max(radius, 0), MAX_RADIUS);
 	}
 
-	private void setForced(ServerWorld world, LoaderEntry entry, boolean forced) {
+	private void setForced(ServerLevel world, LoaderEntry entry, boolean forced) {
 		int cx = entry.pos.getX() >> 4;
 		int cz = entry.pos.getZ() >> 4;
 		for (int dx = -entry.radius; dx <= entry.radius; dx++) {
@@ -467,9 +469,9 @@ public final class LoaderManager {
 		}
 	}
 
-	private ServerWorld resolveWorld(String dim) {
-		RegistryKey<World> key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(dim));
-		return server.getWorld(key);
+	private ServerLevel resolveWorld(String dim) {
+		ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, Identifier.parse(dim));
+		return server.getLevel(key);
 	}
 
 	private int count() {
@@ -487,7 +489,7 @@ public final class LoaderManager {
 	// ------------------------------------------------------------------ persistence
 
 	private Path filePath() {
-		return server.getSavePath(WorldSavePath.ROOT).resolve("claimed_locations.txt");
+		return server.getWorldPath(LevelResource.ROOT).resolve("claimed_locations.txt");
 	}
 
 	private void loadFromDisk() {
@@ -547,7 +549,7 @@ public final class LoaderManager {
 					}
 					radius = clampRadius(radius);
 					loaders.computeIfAbsent(dim, k -> new LinkedHashMap<>())
-							.put(new BlockPos(x, y, z).toImmutable(), new LoaderEntry(dim, new BlockPos(x, y, z), radius, mode, mineable));
+							.put(new BlockPos(x, y, z).immutable(), new LoaderEntry(dim, new BlockPos(x, y, z), radius, mode, mineable));
 				} catch (NumberFormatException ignored) {
 					// skip malformed line
 				}

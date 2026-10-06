@@ -1,0 +1,18 @@
+{
+	"required": false,
+	"package": "dev.SufficientMuffin.chunkloader.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"MinecraftServerMixin",
+		"ServerPlayerInteractionManagerMixin",
+		"ServerWorldMixin",
+		"CommandManagerMixin",
+		"DragonEggBlockMixin",
+		"MobSpawnerLogicMixin",
+		"MobEntityMixin",
+		"SpawnHelperMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

@@ -1,6 +1,6 @@
 package dev.SufficientMuffin.chunkloader;
 
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
 
 /**
  * One tracked dragon-egg chunk loader.
@@ -54,7 +54,7 @@ public final class LoaderEntry {
 
 	public LoaderEntry(String dimension, BlockPos pos, int radius, Mode mode, boolean mineable) {
 		this.dimension = dimension;
-		this.pos = pos.toImmutable();
+		this.pos = pos.immutable();
 		this.radius = radius;
 		this.mode = mode;
 		this.mineable = mineable;

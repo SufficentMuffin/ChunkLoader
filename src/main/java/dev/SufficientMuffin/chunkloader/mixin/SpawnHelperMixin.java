@@ -6,12 +6,12 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 import dev.SufficientMuffin.chunkloader.ChunkLoaderMod;
 
-import net.minecraft.world.SpawnHelper;
+import net.minecraft.world.level.NaturalSpawner;
 
 /**
  * Gives the loaders' chunks a share of the world's hostile-spawn budget.
  *
- * <p>Vanilla's cap test is {@code SpawnHelper.Info.isBelowCap}: a spawn is allowed while the
+ * <p>Vanilla's cap test is {@code NaturalSpawner.SpawnState.isBelowCap}: a spawn is allowed while the
  * group's count is below {@code capacity * spawningChunkCount / 289}, where {@code 289} is the
  * number of chunks in one player's 17x17 bubble and {@code spawningChunkCount} is how many
  * chunks currently lie near players. A forceloaded chunk is not near any player, so a loader
@@ -23,14 +23,14 @@ import net.minecraft.world.SpawnHelper;
  * counts here makes each loader pay for its own contents, exactly as the chunks around a real
  * player do.
  *
- * <p>{@code SpawnHelper.setupSpawn} is called once per world per tick with that world's count,
+ * <p>{@code NaturalSpawner.createState} is called once per world per tick with that world's count,
  * immediately before the count is used to build the spawn info — it is the only place this
  * number enters the cap.
  */
-@Mixin(SpawnHelper.class)
+@Mixin(NaturalSpawner.class)
 public abstract class SpawnHelperMixin {
 
-	@ModifyVariable(method = "setupSpawn", at = @At("HEAD"), argsOnly = true)
+	@ModifyVariable(method = "createState", at = @At("HEAD"), argsOnly = true)
 	private static int chunkloaderAddLoaderChunkBudget(int spawningChunkCount) {
 		return spawningChunkCount + ChunkLoaderMod.MANAGER.getCapBonusChunks();
 	}

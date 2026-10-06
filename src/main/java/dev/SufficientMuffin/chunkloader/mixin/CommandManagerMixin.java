@@ -8,22 +8,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import dev.SufficientMuffin.chunkloader.ChunkLoaderMod;
 import com.mojang.brigadier.CommandDispatcher;
 
-import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.commands.CommandBuildContext;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.CommandSourceStack;
 
 /**
  * Registers the {@code /chunkloader} command (replaces Fabric API's
- * {@code CommandRegistrationCallback}) by hooking the {@code CommandManager}
+ * {@code CommandRegistrationCallback}) by hooking the {@code Commands}
  * constructor after the dispatcher is built.
  */
-@Mixin(CommandManager.class)
+@Mixin(Commands.class)
 public abstract class CommandManagerMixin {
 
 	@Inject(method = "<init>", at = @At("TAIL"))
-	private void chunkloaderRegisterCommands(CommandManager.RegistrationEnvironment environment,
-			CommandRegistryAccess registryAccess, CallbackInfo ci) {
-		CommandDispatcher<ServerCommandSource> dispatcher = ((CommandManager) (Object) this).getDispatcher();
+	private void chunkloaderRegisterCommands(Commands.CommandSelection commandSelection,
+			CommandBuildContext registryAccess, CallbackInfo ci) {
+		CommandDispatcher<CommandSourceStack> dispatcher = ((Commands) (Object) this).getDispatcher();
 		ChunkLoaderMod.registerCommands(dispatcher);
 	}
 }

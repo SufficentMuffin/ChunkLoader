@@ -7,8 +7,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import dev.SufficientMuffin.chunkloader.ChunkLoaderMod;
 
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.world.World;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.Level;
 
 /**
  * Keeps mobs alive inside a loader's forceload radius, by making the loader area answer
@@ -22,10 +22,10 @@ import net.minecraft.world.World;
  * spawner look broken.
  *
  * <p>The switch vanilla itself uses for "this mob is exempt from both of those rules" is
- * {@code MobEntity.cannotDespawn()}, not {@code canImmediatelyDespawn}. {@code checkDespawn}
+ * {@code Mob.requiresCustomPersistence()}, not {@code canImmediatelyDespawn}. {@code checkDespawn}
  * returns early while it is true (after the Peaceful-difficulty cleanup, which therefore
- * still runs), and {@code SpawnHelper}'s per-tick count loop skips the mob because it tests
- * {@code isPersistent() || cannotDespawn()}. So answering true here means an exempt mob
+ * still runs), and {@code NaturalSpawner}'s per-tick count loop skips the mob because it tests
+ * {@code isPersistent() || requiresCustomPersistence()}. So answering true here means an exempt mob
  * neither despawns nor occupies a slot in the global mob cap.
  *
  * <p>{@code canImmediatelyDespawn} only gates the discard itself: a mob exempted there
@@ -44,17 +44,17 @@ import net.minecraft.world.World;
  * they are discarded outright the moment a player is online further than 128 blocks away. That
  * is why the holding behaviour is a mode and not a permanent deletion.
  */
-@Mixin(MobEntity.class)
+@Mixin(Mob.class)
 public abstract class MobEntityMixin {
 
-	@Inject(method = "cannotDespawn", at = @At("HEAD"), cancellable = true)
+	@Inject(method = "requiresCustomPersistence", at = @At("HEAD"), cancellable = true)
 	private void chunkloaderKeepMobsInLoader(CallbackInfoReturnable<Boolean> cir) {
-		MobEntity self = (MobEntity) (Object) this;
-		World world = self.getEntityWorld();
-		if (world.isClient()) {
+		Mob self = (Mob) (Object) this;
+		Level world = self.level();
+		if (world.isClientSide()) {
 			return;
 		}
-		if (ChunkLoaderMod.MANAGER.isInsideEntityModeLoader(world, self.getBlockPos())) {
+		if (ChunkLoaderMod.MANAGER.isInsideEntityModeLoader(world, self.blockPosition())) {
 			// Inside an entity-mode loader -> like a mob near a player: never despawned, never counted.
 			cir.setReturnValue(true);
 		}

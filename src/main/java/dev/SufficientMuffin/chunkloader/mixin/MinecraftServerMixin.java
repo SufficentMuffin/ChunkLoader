@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import dev.SufficientMuffin.chunkloader.ChunkLoaderMod;
 
+import java.util.function.BooleanSupplier;
 import net.minecraft.server.MinecraftServer;
 
 /**
@@ -21,8 +22,8 @@ public abstract class MinecraftServerMixin {
 	@Unique
 	private boolean chunkloaderInitialized = false;
 
-	@Inject(method = "tick", at = @At("HEAD"))
-	private void chunkloaderOnTick(CallbackInfo ci) {
+	@Inject(method = "tickServer", at = @At("HEAD"))
+	private void chunkloaderOnTick(BooleanSupplier haveTime, CallbackInfo ci) {
 		MinecraftServer server = (MinecraftServer) (Object) this;
 		if (!chunkloaderInitialized) {
 			chunkloaderInitialized = true;
